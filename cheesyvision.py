@@ -63,16 +63,20 @@
 #     different.
 #
 # Enjoy!
+
+#This is MouldyCheezyVision, modified from CheezyVision by Christian Balcom from Team 4819, The Flat Mountain Mechanics
+#All my changes are converting it from using sockets to using pynetworktables, and modifying it to work with
+#our 2014 Robot's vision setup.
+
 import numpy as np
 import cv2 as cv
-import socket
 import time
+from pynetworktables import *
+import sys
 
-# CHANGE THIS TO BE YOUR TEAM'S cRIO IP ADDRESS!
-HOST, PORT = "10.2.54.2", 1180
 
 # Name of displayed window
-WINDOW_NAME = "CheesyVision"
+WINDOW_NAME = "MouldyCheesyVision"
 
 # Width of the entire widget
 WIDTH_PX = 1000
@@ -179,13 +183,19 @@ def main():
     last_exposure = exposure
     capture.set(15, exposure)  # 15 is the enum value for CV_CAP_PROP_EXPOSURE
 
-    # Keep track of time so that we can provide the cRIO with a relatively constant
-    # flow of data.
-    last_t = get_time_millis()
+
+    #Init pynetworktables
+    ip = sys.argv[1]
+    NetworkTable.SetIPAddress(ip)
+    NetworkTable.SetClientMode()
+    NetworkTable.Initialize()
+
+    table = NetworkTable.GetTable("SmartDashboard")
 
     # Are we connected to the server on the robot?
     connected = False
     s = None
+    last_targets = ""
 
     while 1:
         # Get a new frame.
@@ -218,36 +228,17 @@ def main():
         if right_on:
             color_far(bg, ((WIDTH_PX+WEBCAM_WIDTH_PX)/2+B, B), (WIDTH_PX-B, WEBCAM_HEIGHT_PX-B))
 
-        # Throttle the output
-        cur_time = get_time_millis()
-        if last_t + PERIOD <= cur_time:
-            # Try to connect to the robot on open or disconnect
-            if not connected:
-                try:
-                    # Open a socket with the cRIO so that we can send the state of the hot goal.
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        targets = ""
+        if left_on and not right_on:
+            targets = "Left Hot!!!"
 
-                    # This is a pretty aggressive timeout...we want to reconnect automatically
-                    # if we are disconnected.
-                    s.settimeout(.1)
-                    s.connect((HOST, PORT))
-                except:
-                    print "failed to reconnect"
-                    last_t = cur_time + 1000
-            try:
-                # Send one byte to the cRIO:
-                # 0x01: Right on
-                # 0x02: Left on
-                # 0x03: Both on
-                write_bytes = bytearray()
-                v = (left_on << 1) | (right_on << 0)
-                write_bytes.append(v)
-                s.send(write_bytes)
-                last_t = cur_time
-                connected = True
-            except:
-                print "Could not send data to robot"
-                connected = False
+        elif right_on and not left_on:
+            targets = "Right Hot!!!"
+
+        if targets != last_targets:
+            table.PutString("Hot Target", targets)
+
+        last_targets = targets
 
         # Show the image.
         cv.imshow(WINDOW_NAME, bg)
@@ -291,8 +282,6 @@ def main():
 
         last_exposure = exposure
         last_max_color_distance = max_color_distance
-
-    s.close()
 
 if __name__ == '__main__':
     main()
